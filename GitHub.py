@@ -132,9 +132,6 @@ for i in range(count):
 
 if not selected:
     print("❌ 指定時間なし")
-
-page.screenshot(path="debug.png")
-    
     browser.close()
     exit()
 
