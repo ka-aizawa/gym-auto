@@ -20,7 +20,7 @@ jobs:
 
       - name: 依存関係インストール
         run: |
-          pip install playwright
+          pip install playwright pytz
           playwright install --with-deps
 
       - name: スクリプト実行
