@@ -88,21 +88,37 @@ with sync_playwright() as p:
     date_btn.wait_for(timeout=20000)
     date_btn.click()
 
+    print("日付選択OK")
+
     # -------------------------
-    # 時間選択（リトライ付き）
+    # 時間取得＆選択（完全版）
     # -------------------------
-    for _ in range(5):
+    page.wait_for_timeout(3000)
+
+    time_buttons = frame.locator('[role="button"]')
+    time_buttons.first.wait_for(timeout=20000)
+
+    print("利用可能時間一覧:")
+
+    selected = False
+
+    for i in range(time_buttons.count()):
+        btn = time_buttons.nth(i)
         try:
-            time_slot = frame.locator("text=02:00").first
-            time_slot.wait_for(timeout=5000)
-            time_slot.click()
-            print("時間選択OK")
-            break
+            text = btn.inner_text()
+            print(f"{i}: {text}")
+
+            if "02:00" in text:
+                btn.click()
+                print("時間選択OK")
+                selected = True
+                break
+
         except:
-            print("時間選択リトライ...")
-            page.wait_for_timeout(2000)
-    else:
-        print("❌ 時間選択失敗")
+            continue
+
+    if not selected:
+        print("❌ 指定時間が見つからない")
         browser.close()
         exit()
 
@@ -118,6 +134,8 @@ with sync_playwright() as p:
     frame.locator('input[type="email"]:visible').fill(USER)
     frame.get_by_role("textbox", name="利用人数").fill("1")
 
+    print("フォーム入力OK")
+
     # -------------------------
     # 予約ボタン
     # -------------------------
@@ -125,8 +143,10 @@ with sync_playwright() as p:
     reserve_btn.wait_for(timeout=10000)
     reserve_btn.click()
 
+    print("予約ボタン押下")
+
     # -------------------------
-    # 確認コード入力欄待機
+    # 確認コード待機
     # -------------------------
     frame.get_by_label("確認コード").wait_for(timeout=20000)
 
@@ -154,8 +174,10 @@ with sync_playwright() as p:
     code_input.wait_for(timeout=10000)
     code_input.fill(code)
 
+    print("コード入力OK")
+
     # -------------------------
-    # 送信ボタン
+    # 送信
     # -------------------------
     submit_btn = frame.locator('button[jsname="LdrfDc"]')
     submit_btn.wait_for(timeout=10000)
