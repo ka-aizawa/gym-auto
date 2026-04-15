@@ -8,7 +8,7 @@ import os
 from email.header import decode_header
 
 # =========================
-# Gmailコード取得（安全版）
+# Gmailコード取得
 # =========================
 def get_code_safe(user, password):
     try:
@@ -19,14 +19,12 @@ def get_code_safe(user, password):
         result, data = mail.search(None, "ALL")
         mail_ids = data[0].split()
 
-        # 最新5件だけ見る（高速化）
         for mail_id in reversed(mail_ids[-5:]):
             result, msg_data = mail.fetch(mail_id, "(RFC822)")
             raw_email = msg_data[0][1]
 
             msg = email.message_from_bytes(raw_email)
 
-            # 件名デコード
             subject = msg.get("Subject", "")
             decoded_subject = ""
             for part, enc in decode_header(subject):
@@ -38,7 +36,6 @@ def get_code_safe(user, password):
             if "予約確認コード" not in decoded_subject:
                 continue
 
-            # 本文取得
             body = ""
             if msg.is_multipart():
                 for part in msg.walk():
@@ -49,19 +46,18 @@ def get_code_safe(user, password):
             else:
                 body = msg.get_payload(decode=True).decode(errors="ignore")
 
-            # 6桁コード抽出
             match = re.search(r"\b\d{6}\b", body)
             if match:
                 return match.group()
 
     except Exception as e:
-        print("⚠️ メール取得エラー:", e)
+        print("メール取得エラー:", e)
 
     return None
 
 
 # =========================
-# 環境変数（GitHub Secrets）
+# 環境変数
 # =========================
 USER = os.getenv("GMAIL_USER")
 PASSWORD = os.getenv("GMAIL_PASSWORD")
@@ -76,7 +72,7 @@ target_day = (datetime.now() + timedelta(days=7)).day
 # メイン処理
 # =========================
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)  # ★重要（クラウド用）
+    browser = p.chromium.launch(headless=True)
     context = browser.new_context()
     page = context.new_page()
 
@@ -86,10 +82,30 @@ with sync_playwright() as p:
     frame = page.frame_locator("iframe")
 
     # -------------------------
-    # 日付・時間選択
+    # 日付選択
     # -------------------------
-    frame.locator(f"text={target_day}").first.click()
-    frame.locator("text=02:00").first.click()
+    date_btn = frame.locator(f"text={target_day}").first
+    date_btn.wait_for(timeout=20000)
+    date_btn.click()
+
+    # -------------------------
+    # 時間選択（リトライ付き）
+    # -------------------------
+    for _ in range(5):
+        try:
+            time_slot = frame.locator("text=02:00").first
+            time_slot.wait_for(timeout=5000)
+            time_slot.click()
+            print("時間選択OK")
+            break
+        except:
+            print("時間選択リトライ...")
+            page.wait_for_timeout(2000)
+    else:
+        print("❌ 時間選択失敗")
+        browser.close()
+        exit()
+
     page.wait_for_timeout(2000)
 
     # -------------------------
@@ -103,9 +119,11 @@ with sync_playwright() as p:
     frame.get_by_role("textbox", name="利用人数").fill("1")
 
     # -------------------------
-    # 予約ボタン押下
+    # 予約ボタン
     # -------------------------
-    frame.locator('button:has-text("予約")').click()
+    reserve_btn = frame.locator('button:has-text("予約")')
+    reserve_btn.wait_for(timeout=10000)
+    reserve_btn.click()
 
     # -------------------------
     # 確認コード入力欄待機
@@ -114,11 +132,8 @@ with sync_playwright() as p:
 
     print("⌛ コード待機開始（最大180秒）")
 
-    # -------------------------
-    # コード取得（最大3分）
-    # -------------------------
     code = None
-    for _ in range(36):  # 5秒 × 36 = 180秒
+    for _ in range(36):
         code = get_code_safe(USER, PASSWORD)
         if code:
             print("✅ コード取得:", code)
@@ -130,19 +145,21 @@ with sync_playwright() as p:
         browser.close()
         exit()
 
-    # UI安定待ち
     page.wait_for_timeout(2000)
 
     # -------------------------
     # コード入力
     # -------------------------
-    frame.get_by_label("確認コード").fill(code)
+    code_input = frame.get_by_label("確認コード")
+    code_input.wait_for(timeout=10000)
+    code_input.fill(code)
 
     # -------------------------
-    # 送信ボタン（確定版）
+    # 送信ボタン
     # -------------------------
-    frame.locator('button[jsname="LdrfDc"]').wait_for()
-    frame.locator('button[jsname="LdrfDc"]').click()
+    submit_btn = frame.locator('button[jsname="LdrfDc"]')
+    submit_btn.wait_for(timeout=10000)
+    submit_btn.click()
 
     print("🎉 予約完了")
 
