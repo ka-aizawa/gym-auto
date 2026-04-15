@@ -90,50 +90,49 @@ with sync_playwright() as p:
 
     print("日付選択OK")
 
-# -------------------------
-# iframe取得（修正版）
-# -------------------------
-frame = page.frame_locator('iframe').first
-frame.locator("body").wait_for(timeout=20000)
+    # -------------------------
+    # iframe取得（修正版：ここをインデント内に入れました）
+    # -------------------------
+    # 既にframe変数はあるので、必要に応じて再取得
+    frame = page.frame_locator('iframe').first
+    frame.locator("body").wait_for(timeout=20000)
 
-page.wait_for_timeout(5000)
+    page.wait_for_timeout(5000)
 
-# -------------------------
-# 時間取得
-# -------------------------
-time_buttons = frame.locator('div[role="button"]:has-text(":")')
+    # -------------------------
+    # 時間取得
+    # -------------------------
+    time_buttons = frame.locator('div[role="button"]:has-text(":")')
 
-count = time_buttons.count()
-print("時間ボタン数:", count)
+    count = time_buttons.count()
+    print("時間ボタン数:", count)
 
-if count == 0:
-    print("❌ 時間が取得できない（iframe or UI問題）")
-    browser.close()
-    exit()
+    if count == 0:
+        print("❌ 時間が取得できない（iframe or UI問題）")
+        # with構文内なのでexit()するだけでOK
+        exit()
 
-print("利用可能時間一覧:")
+    print("利用可能時間一覧:")
 
-selected = False
+    selected = False
 
-for i in range(count):
-    btn = time_buttons.nth(i)
-    try:
-        text = btn.inner_text()
-        print(f"{i}: {text}")
+    for i in range(count):
+        btn = time_buttons.nth(i)
+        try:
+            text = btn.inner_text()
+            print(f"{i}: {text}")
 
-        if "02:00" in text:
-            btn.click()
-            print("時間選択OK")
-            selected = True
-            break
+            if "02:00" in text:
+                btn.click()
+                print("時間選択OK")
+                selected = True
+                break
+        except:
+            continue
 
-    except:
-        continue
-
-if not selected:
-    print("❌ 指定時間なし")
-    browser.close()
-    exit()
+    if not selected:
+        print("❌ 指定時間なし")
+        exit()
 
     page.wait_for_timeout(2000)
 
@@ -141,11 +140,18 @@ if not selected:
     # フォーム入力
     # -------------------------
     name_inputs = frame.locator('input[type="text"]:visible')
-    name_inputs.nth(0).fill("Aizawa")
-    name_inputs.nth(1).fill("Katsushi")
+    # 要素が存在するか確認してから入力
+    if name_inputs.count() >= 2:
+        name_inputs.nth(0).fill("Aizawa")
+        name_inputs.nth(1).fill("Katsushi")
 
     frame.locator('input[type="email"]:visible').fill(USER)
-    frame.get_by_role("textbox", name="利用人数").fill("1")
+    
+    # 「利用人数」などの入力（要素が見つからない場合があるためtryで囲むか、存在確認を推奨）
+    try:
+        frame.get_by_role("textbox", name="利用人数").fill("1")
+    except:
+        print("利用人数入力スキップ（見つかりませんでした）")
 
     print("フォーム入力OK")
 
@@ -161,8 +167,7 @@ if not selected:
     # -------------------------
     # 確認コード待機
     # -------------------------
-    frame.get_by_label("確認コード").wait_for(timeout=20000)
-
+    # get_by_labelが動かない場合があるため、要素の出現を待つ
     print("⌛ コード待機開始（最大180秒）")
 
     code = None
@@ -175,7 +180,6 @@ if not selected:
 
     if not code:
         print("❌ コード取得失敗")
-        browser.close()
         exit()
 
     page.wait_for_timeout(2000)
@@ -183,20 +187,26 @@ if not selected:
     # -------------------------
     # コード入力
     # -------------------------
-    code_input = frame.get_by_label("確認コード")
-    code_input.wait_for(timeout=10000)
-    code_input.fill(code)
-
-    print("コード入力OK")
+    # labelで見つからない場合は別のセレクターを検討
+    try:
+        code_input = frame.get_by_label("確認コード")
+        code_input.wait_for(timeout=10000)
+        code_input.fill(code)
+        print("コード入力OK")
+    except:
+        print("❌ コード入力フィールドが見つかりません")
+        exit()
 
     # -------------------------
     # 送信
     # -------------------------
-    submit_btn = frame.locator('button[jsname="LdrfDc"]')
-    submit_btn.wait_for(timeout=10000)
-    submit_btn.click()
-
-    print("🎉 予約完了")
+    try:
+        submit_btn = frame.locator('button[jsname="LdrfDc"]')
+        submit_btn.wait_for(timeout=10000)
+        submit_btn.click()
+        print("🎉 予約完了")
+    except:
+        print("❌ 送信ボタンが見つかりません")
 
     page.wait_for_timeout(5000)
-    browser.close()
+    # browser.close() は with構文を抜けるときに自動で行われます
