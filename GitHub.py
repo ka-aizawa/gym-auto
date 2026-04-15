@@ -47,25 +47,29 @@ def get_code_safe(user, password):
     return None
 
 # =========================
-# 環境変数
+# 環境変数・設定
 # =========================
 USER = os.getenv("GMAIL_USER")
 PASSWORD = os.getenv("GMAIL_PASSWORD")
+TARGET_TIME = "1:00am"  # 予約したい時間
 
 if not USER or not PASSWORD:
     raise Exception("環境変数が設定されていません")
 
+# 7日後の日付を取得
 target_day = (datetime.now() + timedelta(days=7)).day
 
 # =========================
 # メイン処理
 # =========================
 with sync_playwright() as p:
+    # タイムゾーンを日本に設定して起動
     browser = p.chromium.launch(headless=True)
-    context = browser.new_context()
+    context = browser.new_context(timezone_id="Asia/Tokyo")
     page = context.new_page()
 
     try:
+        print(f"🚀 予約開始: ターゲット {target_day}日 {TARGET_TIME}")
         page.goto("https://gym-sanctuary.com/reserve/", wait_until="networkidle")
         page.wait_for_timeout(5000)
 
@@ -77,46 +81,44 @@ with sync_playwright() as p:
         date_btn = frame.locator(f"text={target_day}").first
         date_btn.wait_for(timeout=20000)
         date_btn.click()
-        print(f"日付選択OK ({target_day}日)")
+        print(f"✅ 日付選択完了: {target_day}日")
 
-        # 日付クリック後のロード待ち
+        # クリック後の読み込み待ち
         page.wait_for_timeout(5000)
 
         # -------------------------
         # 時間取得
         # -------------------------
-        # 時間ボタンが表示されるまで最大20秒待つ
-        time_button_selector = 'div[role="button"]:has-text(":")'
+        # スクショに基づき、am/pmを含むボタンを探す
+        time_button_selector = 'div[role="button"]:has-text("am"), div[role="button"]:has-text("pm")'
+        
         try:
+            # 最初のボタンが出るまで最大20秒待つ
             frame.locator(time_button_selector).first.wait_for(timeout=20000)
-        except Exception as e:
-            print("⚠️ 時間ボタンが時間内に表示されませんでした。スクショを撮ります。")
+        except:
+            print("⚠️ 時間ボタンが表示されませんでした。")
             page.screenshot(path="debug_screenshot.png")
-            # 継続しても失敗するのでここで終了
             exit(1)
 
         time_buttons = frame.locator(time_button_selector)
         count = time_buttons.count()
-        print("時間ボタン数:", count)
-
-        if count == 0:
-            print("❌ 時間が取得できないため終了します")
-            page.screenshot(path="debug_screenshot.png")
-            exit(1)
+        print(f"📊 見つかった時間枠数: {count}")
 
         selected = False
         for i in range(count):
             btn = time_buttons.nth(i)
-            text = btn.inner_text()
-            print(f"{i}: {text}")
-            if "02:00" in text:
+            # テキストを抽出してクリーンアップ（例: "1:00am"）
+            time_text = btn.inner_text().replace("\n", "").strip().lower()
+            print(f"  [{i}]: {time_text}")
+
+            if TARGET_TIME.lower() in time_text:
                 btn.click()
-                print("時間選択OK")
+                print(f"✅ 時間選択完了: {time_text}")
                 selected = True
                 break
 
         if not selected:
-            print("❌ 指定時間(02:00)が見つかりませんでした")
+            print(f"❌ 指定時間({TARGET_TIME})が見つかりませんでした。")
             page.screenshot(path="debug_screenshot.png")
             exit(1)
 
@@ -125,7 +127,6 @@ with sync_playwright() as p:
         # -------------------------
         # フォーム入力
         # -------------------------
-        # 名前入力（要素が表示されるまで待つ）
         name_inputs = frame.locator('input[type="text"]:visible')
         name_inputs.first.wait_for(timeout=10000)
         
@@ -135,35 +136,35 @@ with sync_playwright() as p:
 
         frame.locator('input[type="email"]:visible').fill(USER)
         
-        # 利用人数入力（エラー回避のためtry）
         try:
+            # 利用人数入力
             frame.get_by_role("textbox", name="利用人数").fill("1")
         except:
             pass
 
-        print("フォーム入力OK")
+        print("✅ フォーム入力完了")
 
         # -------------------------
         # 予約ボタン
         # -------------------------
         reserve_btn = frame.locator('button:has-text("予約")')
         reserve_btn.click()
-        print("予約ボタン押下")
+        print("👆 予約ボタンを押しました")
 
         # -------------------------
         # 確認コード待機
         # -------------------------
-        print("⌛ コードメール確認中...")
+        print("⌛ メールからコードを取得中...")
         code = None
-        for _ in range(36):  # 最大3分
+        for _ in range(36):  # 3分間チェック
             code = get_code_safe(USER, PASSWORD)
             if code:
-                print("✅ コード取得:", code)
+                print(f"🔑 コード取得成功: {code}")
                 break
             time.sleep(5)
 
         if not code:
-            print("❌ コード取得失敗")
+            print("❌ タイムアウト: コードが届きませんでした")
             page.screenshot(path="debug_screenshot.png")
             exit(1)
 
@@ -171,16 +172,15 @@ with sync_playwright() as p:
         code_input = frame.get_by_label("確認コード")
         code_input.wait_for(timeout=10000)
         code_input.fill(code)
-        print("コード入力OK")
-
+        
         # 最終送信
         submit_btn = frame.locator('button[jsname="LdrfDc"]')
         submit_btn.click()
-        print("🎉 予約完了")
+        print("🎉 予約処理が完了しました！")
         
         page.wait_for_timeout(5000)
 
     except Exception as e:
-        print(f"予期せぬエラーが発生しました: {e}")
+        print(f"🚨 エラー発生: {e}")
         page.screenshot(path="error_screenshot.png")
         raise e
