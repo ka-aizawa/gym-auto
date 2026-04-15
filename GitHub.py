@@ -90,37 +90,53 @@ with sync_playwright() as p:
 
     print("日付選択OK")
 
-    # -------------------------
-    # 時間取得＆選択（完全版）
-    # -------------------------
-    page.wait_for_timeout(3000)
+# -------------------------
+# iframe取得（修正版）
+# -------------------------
+frame = page.frame_locator('iframe').first
+frame.locator("body").wait_for(timeout=20000)
 
-    time_buttons = frame.locator('[role="button"]')
-    time_buttons.first.wait_for(timeout=20000)
+page.wait_for_timeout(5000)
 
-    print("利用可能時間一覧:")
+# -------------------------
+# 時間取得
+# -------------------------
+time_buttons = frame.locator('div[role="button"]:has-text(":")')
 
-    selected = False
+count = time_buttons.count()
+print("時間ボタン数:", count)
 
-    for i in range(time_buttons.count()):
-        btn = time_buttons.nth(i)
-        try:
-            text = btn.inner_text()
-            print(f"{i}: {text}")
+if count == 0:
+    print("❌ 時間が取得できない（iframe or UI問題）")
+    browser.close()
+    exit()
 
-            if "02:00" in text:
-                btn.click()
-                print("時間選択OK")
-                selected = True
-                break
+print("利用可能時間一覧:")
 
-        except:
-            continue
+selected = False
 
-    if not selected:
-        print("❌ 指定時間が見つからない")
-        browser.close()
-        exit()
+for i in range(count):
+    btn = time_buttons.nth(i)
+    try:
+        text = btn.inner_text()
+        print(f"{i}: {text}")
+
+        if "02:00" in text:
+            btn.click()
+            print("時間選択OK")
+            selected = True
+            break
+
+    except:
+        continue
+
+if not selected:
+    print("❌ 指定時間なし")
+
+page.screenshot(path="debug.png")
+    
+    browser.close()
+    exit()
 
     page.wait_for_timeout(2000)
 
