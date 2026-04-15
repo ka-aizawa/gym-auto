@@ -28,3 +28,11 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
         run: python GitHub.py
+
+      # --- ここから下を追加しました ---
+      - name: スクリーンショットを保存
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-screenshots
+          path: ./*.png
