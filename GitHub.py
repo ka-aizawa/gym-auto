@@ -120,11 +120,7 @@ with sync_playwright() as p:
         # -------------------------
         # 日付選択
         # -------------------------
-        date_locator = frame.locator(f'button:has-text("{target_day}")')
-        date_locator.first.wait_for(timeout=20000)
-        date_locator.first.click(force=True)
-
-        print(f"✅ 日付 {target_day}日 クリック")
+        frame.locator(f'button:has-text("{target_day}")').first.click(force=True)
         page.wait_for_timeout(8000)
         page.screenshot(path="./02_date_selected.png")
 
@@ -133,30 +129,13 @@ with sync_playwright() as p:
         # -------------------------
         all_buttons = frame.locator('button:has-text(":")').all()
 
-        print(f"🔎 ボタン数: {len(all_buttons)}")
-
-        selected = False
-
         for btn in all_buttons:
             raw = btn.inner_text()
-            print("->", raw)
-
             parsed = parse_time(raw)
-            if not parsed:
-                continue
-
-            hour, minute = parsed
-
-            if hour == TARGET_HOUR and minute == TARGET_MIN:
+            if parsed and parsed == (TARGET_HOUR, TARGET_MIN):
                 print(f"🎯 時間発見: {raw}")
                 btn.click()
-                selected = True
                 break
-
-        if not selected:
-            print("❌ 02:00が見つからない")
-            page.screenshot(path="./error_time.png")
-            exit(1)
 
         page.wait_for_timeout(5000)
         page.screenshot(path="./03_time_selected.png")
@@ -164,7 +143,7 @@ with sync_playwright() as p:
         # -------------------------
         # フォーム入力
         # -------------------------
-        frame.locator('input[type="email"]').wait_for(timeout=10000)
+        frame.locator('input[type="email"]').wait_for()
 
         name_inputs = frame.locator('input[type="text"]:visible')
         if name_inputs.count() >= 2:
@@ -180,7 +159,7 @@ with sync_playwright() as p:
 
         page.screenshot(path="./04_form_filled.png")
 
-        frame.locator('button:has-text("予約")').click()
+        frame.get_by_role("button", name="予約").click()
         print("📨 予約ボタン押下")
 
         page.wait_for_timeout(5000)
@@ -200,22 +179,28 @@ with sync_playwright() as p:
             time.sleep(5)
 
         if not code:
-            print("❌ コード取得失敗")
             page.screenshot(path="./error_code.png")
             exit(1)
 
-        # iframe再取得
+        # iframe再取得（重要）
         frame = page.frame_locator("iframe").last
 
         code_input = frame.get_by_label("確認コード")
         code_input.fill(code)
 
-        print("入力確認:", code_input.input_value())
+        # 🔥 入力確定（超重要）
+        code_input.press("Tab")
 
+        print("入力確認:", code_input.input_value())
         page.screenshot(path="./06_code_input.png")
 
-        # 送信
-        frame.locator('button[jsname="LdrfDc"]').click()
+        # -------------------------
+        # 送信（修正版）
+        # -------------------------
+        submit_btn = frame.locator('button[jsname="LdrfDc"]:visible')
+        submit_btn.first.wait_for(state="visible", timeout=10000)
+        submit_btn.first.click(force=True)
+
         print("📨 送信クリック")
 
         page.wait_for_timeout(8000)
@@ -238,6 +223,5 @@ with sync_playwright() as p:
         raise e
 
     finally:
-        # 🔥 必ず最後にスクショ
         page.screenshot(path="./99_final.png")
         print("📸 最終スクショ保存")
