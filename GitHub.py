@@ -118,41 +118,37 @@ with sync_playwright() as p:
         frame = page.frame_locator("iframe").first
 
         # -------------------------
-        # 日付選択（厳密）
+        # 日付選択
         # -------------------------
         date_locator = frame.locator(
-            f'button:has-text("{target_day}"), [role="button"]:has-text("{target_day}")'
-        ).filter(has_not_text="2026")
+            f'button:has-text("{target_day}")'
+        )
 
         date_locator.first.wait_for(timeout=20000)
-        date_locator.first.scroll_into_view_if_needed()
         date_locator.first.click(force=True)
 
         print(f"✅ 日付 {target_day}日 クリック")
 
-        page.wait_for_timeout(10000)
+        page.wait_for_timeout(8000)
 
         # -------------------------
-        # 時間選択（02:00）
+        # 時間選択
         # -------------------------
         all_buttons = frame.locator('button:has-text(":")').all()
-
-        print(f"🔎 取得ボタン数: {len(all_buttons)}")
 
         selected = False
 
         for btn in all_buttons:
             raw = btn.inner_text()
-            print("->", raw)
-
             parsed = parse_time(raw)
+
             if not parsed:
                 continue
 
             hour, minute = parsed
 
             if hour == TARGET_HOUR and minute == TARGET_MIN:
-                print(f"🎯 発見: {raw}")
+                print(f"🎯 時間発見: {raw}")
                 btn.click()
                 selected = True
                 break
@@ -183,6 +179,8 @@ with sync_playwright() as p:
 
         frame.locator('button:has-text("予約")').click()
 
+        print("📨 予約ボタン押下")
+
         # -------------------------
         # コード取得
         # -------------------------
@@ -200,10 +198,31 @@ with sync_playwright() as p:
             print("❌ コード取得失敗")
             exit(1)
 
-        frame.get_by_label("確認コード").fill(code)
-        frame.locator('button[jsname="LdrfDc"]').click()
+        # 🔥 iframe再取得（超重要）
+        frame = page.frame_locator("iframe").last
 
-        print("🎉 予約完了")
+        code_input = frame.get_by_label("確認コード")
+        code_input.fill(code)
+
+        # 入力確認
+        print("入力確認:", code_input.input_value())
+
+        # 送信
+        submit_btn = frame.locator('button[jsname="LdrfDc"]')
+        submit_btn.click()
+
+        print("📨 送信クリック")
+
+        # -------------------------
+        # 成功判定
+        # -------------------------
+        try:
+            page.wait_for_selector("text=予約", timeout=15000)
+            print("🎉 予約成功確認！")
+        except:
+            print("❌ 成功判定できず")
+            page.screenshot(path="final_error.png")
+            exit(1)
 
     except Exception as e:
         print(f"🚨 エラー: {e}")
