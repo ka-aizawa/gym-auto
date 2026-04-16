@@ -182,24 +182,26 @@ with sync_playwright() as p:
             page.screenshot(path="./error_code.png")
             exit(1)
 
-        # iframe再取得（重要）
+        # iframe再取得
         frame = page.frame_locator("iframe").last
 
         code_input = frame.get_by_label("確認コード")
         code_input.fill(code)
 
-        # 🔥 入力確定（超重要）
-        code_input.press("Tab")
+        # 🔥 Tab禁止 → フォーカスを安全に外す
+        page.mouse.click(10, 10)
 
         print("入力確認:", code_input.input_value())
         page.screenshot(path="./06_code_input.png")
 
         # -------------------------
-        # 送信（修正版）
+        # 送信（ここが本命修正）
         # -------------------------
-        submit_btn = frame.locator('button[jsname="LdrfDc"]:visible')
-        submit_btn.first.wait_for(state="visible", timeout=10000)
-        submit_btn.first.click(force=True)
+        submit_btn = frame.get_by_role("button", name="送信")
+
+        submit_btn.wait_for(state="visible", timeout=10000)
+        submit_btn.scroll_into_view_if_needed()
+        submit_btn.click()
 
         print("📨 送信クリック")
 
