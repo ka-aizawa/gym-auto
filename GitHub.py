@@ -64,7 +64,7 @@ if not USER or not PASSWORD:
     raise Exception("環境変数が設定されていません")
 
 # =========================
-# JST基準：7日後の02:00
+# JST基準：7日後
 # =========================
 jst = pytz.timezone('Asia/Tokyo')
 target_date = datetime.now(jst) + timedelta(days=7)
@@ -74,7 +74,7 @@ TARGET_HOUR = 2
 TARGET_MIN = 0
 
 # =========================
-# 時刻パース関数（重要）
+# 時刻パース
 # =========================
 def parse_time(text):
     text = text.lower().strip()
@@ -118,7 +118,7 @@ with sync_playwright() as p:
         frame = page.frame_locator("iframe").first
 
         # -------------------------
-        # 日付（厳密一致）
+        # 日付選択（厳密）
         # -------------------------
         date_locator = frame.locator(
             f'button:has-text("{target_day}"), [role="button"]:has-text("{target_day}")'
@@ -126,23 +126,26 @@ with sync_playwright() as p:
 
         date_locator.first.wait_for(timeout=20000)
         date_locator.first.scroll_into_view_if_needed()
-        date_locator.first.click(force=True, delay=200)
+        date_locator.first.click(force=True)
 
         print(f"✅ 日付 {target_day}日 クリック")
 
         page.wait_for_timeout(10000)
 
         # -------------------------
-        # 時間（02:00を厳密一致）
+        # 時間選択（02:00）
         # -------------------------
-        all_buttons = frame.locator('div[role="button"]').all()
+        all_buttons = frame.locator('button:has-text(":")').all()
+
+        print(f"🔎 取得ボタン数: {len(all_buttons)}")
 
         selected = False
 
         for btn in all_buttons:
             raw = btn.inner_text()
-            parsed = parse_time(raw)
+            print("->", raw)
 
+            parsed = parse_time(raw)
             if not parsed:
                 continue
 
@@ -150,13 +153,12 @@ with sync_playwright() as p:
 
             if hour == TARGET_HOUR and minute == TARGET_MIN:
                 print(f"🎯 発見: {raw}")
-                btn.click(delay=200)
+                btn.click()
                 selected = True
                 break
 
         if not selected:
-            found = [b.inner_text().replace("\n", " ") for b in all_buttons]
-            print(f"❌ 02:00が見つからない: {found}")
+            print("❌ 02:00が見つからない")
             page.screenshot(path="time_error.png")
             exit(1)
 
@@ -179,15 +181,18 @@ with sync_playwright() as p:
         except:
             pass
 
-        frame.locator('button:has-text("予約")').click(delay=200)
+        frame.locator('button:has-text("予約")').click()
 
         # -------------------------
         # コード取得
         # -------------------------
+        print("⌛ コード待機")
+
         code = None
         for _ in range(36):
             code = get_code_safe(USER, PASSWORD)
             if code:
+                print(f"🔑 コード取得: {code}")
                 break
             time.sleep(5)
 
@@ -196,9 +201,9 @@ with sync_playwright() as p:
             exit(1)
 
         frame.get_by_label("確認コード").fill(code)
-        frame.locator('button[jsname="LdrfDc"]').click(delay=200)
+        frame.locator('button[jsname="LdrfDc"]').click()
 
-        print("🎉 完了")
+        print("🎉 予約完了")
 
     except Exception as e:
         print(f"🚨 エラー: {e}")
