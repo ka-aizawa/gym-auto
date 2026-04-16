@@ -78,7 +78,6 @@ TARGET_MIN = 0
 # =========================
 def parse_time(text):
     text = text.lower().strip()
-
     match = re.search(r'(\d{1,2}):(\d{2})', text)
     if not match:
         return None
@@ -113,35 +112,36 @@ with sync_playwright() as p:
         print(f"🚀 予約開始: {target_day}日 02:00")
 
         page.goto("https://gym-sanctuary.com/reserve/", wait_until="networkidle")
-        page.wait_for_timeout(10000)
+        page.wait_for_timeout(8000)
+        page.screenshot(path="./01_loaded.png")
 
         frame = page.frame_locator("iframe").first
 
         # -------------------------
         # 日付選択
         # -------------------------
-        date_locator = frame.locator(
-            f'button:has-text("{target_day}")'
-        )
-
+        date_locator = frame.locator(f'button:has-text("{target_day}")')
         date_locator.first.wait_for(timeout=20000)
         date_locator.first.click(force=True)
 
         print(f"✅ 日付 {target_day}日 クリック")
-
         page.wait_for_timeout(8000)
+        page.screenshot(path="./02_date_selected.png")
 
         # -------------------------
         # 時間選択
         # -------------------------
         all_buttons = frame.locator('button:has-text(":")').all()
 
+        print(f"🔎 ボタン数: {len(all_buttons)}")
+
         selected = False
 
         for btn in all_buttons:
             raw = btn.inner_text()
-            parsed = parse_time(raw)
+            print("->", raw)
 
+            parsed = parse_time(raw)
             if not parsed:
                 continue
 
@@ -155,10 +155,11 @@ with sync_playwright() as p:
 
         if not selected:
             print("❌ 02:00が見つからない")
-            page.screenshot(path="time_error.png")
+            page.screenshot(path="./error_time.png")
             exit(1)
 
         page.wait_for_timeout(5000)
+        page.screenshot(path="./03_time_selected.png")
 
         # -------------------------
         # フォーム入力
@@ -177,9 +178,13 @@ with sync_playwright() as p:
         except:
             pass
 
-        frame.locator('button:has-text("予約")').click()
+        page.screenshot(path="./04_form_filled.png")
 
+        frame.locator('button:has-text("予約")').click()
         print("📨 予約ボタン押下")
+
+        page.wait_for_timeout(5000)
+        page.screenshot(path="./05_after_reserve_click.png")
 
         # -------------------------
         # コード取得
@@ -196,22 +201,25 @@ with sync_playwright() as p:
 
         if not code:
             print("❌ コード取得失敗")
+            page.screenshot(path="./error_code.png")
             exit(1)
 
-        # 🔥 iframe再取得（超重要）
+        # iframe再取得
         frame = page.frame_locator("iframe").last
 
         code_input = frame.get_by_label("確認コード")
         code_input.fill(code)
 
-        # 入力確認
         print("入力確認:", code_input.input_value())
 
-        # 送信
-        submit_btn = frame.locator('button[jsname="LdrfDc"]')
-        submit_btn.click()
+        page.screenshot(path="./06_code_input.png")
 
+        # 送信
+        frame.locator('button[jsname="LdrfDc"]').click()
         print("📨 送信クリック")
+
+        page.wait_for_timeout(8000)
+        page.screenshot(path="./07_after_submit.png")
 
         # -------------------------
         # 成功判定
@@ -221,10 +229,15 @@ with sync_playwright() as p:
             print("🎉 予約成功確認！")
         except:
             print("❌ 成功判定できず")
-            page.screenshot(path="final_error.png")
+            page.screenshot(path="./error_final.png")
             exit(1)
 
     except Exception as e:
         print(f"🚨 エラー: {e}")
-        page.screenshot(path="error.png")
+        page.screenshot(path="./error_exception.png")
         raise e
+
+    finally:
+        # 🔥 必ず最後にスクショ
+        page.screenshot(path="./99_final.png")
+        print("📸 最終スクショ保存")
