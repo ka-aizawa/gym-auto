@@ -188,16 +188,16 @@ with sync_playwright() as p:
         code_input = frame.get_by_label("確認コード")
         code_input.fill(code)
 
-        # 🔥 Tab禁止 → フォーカスを安全に外す
+        # フォーカス暴走防止
         page.mouse.click(10, 10)
 
         print("入力確認:", code_input.input_value())
         page.screenshot(path="./06_code_input.png")
 
         # -------------------------
-        # 送信（ここが本命修正）
+        # 送信（最終修正）
         # -------------------------
-        submit_btn = frame.get_by_role("button", name="送信")
+        submit_btn = frame.locator('button[jsname="LdrfDc"]:visible').last
 
         submit_btn.wait_for(state="visible", timeout=10000)
         submit_btn.scroll_into_view_if_needed()
