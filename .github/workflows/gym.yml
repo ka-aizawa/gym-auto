@@ -2,8 +2,8 @@ name: gym-auto
 
 on:
   workflow_dispatch:
-  #schedule:
-    #- cron: '*/10 * * * *'
+  # schedule:
+  #   - cron: '*/10 * * * *'
 
 jobs:
   run:
@@ -18,9 +18,25 @@ jobs:
         with:
           python-version: '3.11'
 
+      # 🔥 pipキャッシュ
+      - name: pipキャッシュ
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      # 🔥 playwrightキャッシュ（超重要）
+      - name: playwrightキャッシュ
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}
+
       - name: 依存関係インストール
         run: |
-          pip install playwright pytz
+          pip install -r requirements.txt
           playwright install --with-deps
 
       - name: スクリプト実行
@@ -29,7 +45,6 @@ jobs:
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
         run: python GitHub.py
 
-      # --- ここから下を追加しました ---
       - name: スクリーンショットを保存
         uses: actions/upload-artifact@v4
         if: always()
