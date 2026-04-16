@@ -18,10 +18,12 @@ def get_code_safe(user, password):
         mail.select("inbox")
         result, data = mail.search(None, "ALL")
         mail_ids = data[0].split()
+
         for mail_id in reversed(mail_ids[-5:]):
             result, msg_data = mail.fetch(mail_id, "(RFC822)")
             raw_email = msg_data[0][1]
             msg = email.message_from_bytes(raw_email)
+
             subject = msg.get("Subject", "")
             decoded_subject = ""
             for part, enc in decode_header(subject):
@@ -29,8 +31,10 @@ def get_code_safe(user, password):
                     decoded_subject += part.decode(enc or "utf-8", errors="ignore")
                 else:
                     decoded_subject += part
+
             if "予約確認コード" not in decoded_subject:
                 continue
+
             body = ""
             if msg.is_multipart():
                 for part in msg.walk():
@@ -40,15 +44,18 @@ def get_code_safe(user, password):
                             body += payload.decode(errors="ignore")
             else:
                 body = msg.get_payload(decode=True).decode(errors="ignore")
+
             match = re.search(r"\b\d{6}\b", body)
             if match:
                 return match.group()
+
     except Exception as e:
         print("メール取得エラー:", e)
+
     return None
 
 # =========================
-# 環境変数・設定
+# 環境変数
 # =========================
 USER = os.getenv("GMAIL_USER")
 PASSWORD = os.getenv("GMAIL_PASSWORD")
@@ -56,82 +63,101 @@ PASSWORD = os.getenv("GMAIL_PASSWORD")
 if not USER or not PASSWORD:
     raise Exception("環境変数が設定されていません")
 
-# 日本時間で「今日から7日後」を計算（16日なら23日）
+# =========================
+# JST基準：7日後の02:00
+# =========================
 jst = pytz.timezone('Asia/Tokyo')
 target_date = datetime.now(jst) + timedelta(days=7)
 target_day = target_date.day
+
+TARGET_HOUR = 2
+TARGET_MIN = 0
+
+# =========================
+# 時刻パース関数（重要）
+# =========================
+def parse_time(text):
+    text = text.lower().strip()
+
+    match = re.search(r'(\d{1,2}):(\d{2})', text)
+    if not match:
+        return None
+
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+
+    if "pm" in text and hour != 12:
+        hour += 12
+    if "am" in text and hour == 12:
+        hour = 0
+
+    return hour, minute
 
 # =========================
 # メイン処理
 # =========================
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
-    # ブラウザ設定（タイムゾーンは一応Tokyoにするが、IPで上書きされる可能性を考慮）
+
     context = browser.new_context(
         timezone_id="Asia/Tokyo",
         locale="ja-JP",
+        geolocation={"longitude": 139.6917, "latitude": 35.6895},
+        permissions=["geolocation"],
         viewport={'width': 1280, 'height': 800}
     )
+
     page = context.new_page()
 
     try:
-        print(f"🚀 予約開始: 日本時間 ターゲット {target_day}日")
+        print(f"🚀 予約開始: {target_day}日 02:00")
+
         page.goto("https://gym-sanctuary.com/reserve/", wait_until="networkidle")
-        
-        # iframeのロード待機（長めに設定）
         page.wait_for_timeout(10000)
+
         frame = page.frame_locator("iframe").first
 
         # -------------------------
-        # 日付選択
+        # 日付（厳密一致）
         # -------------------------
-        # カレンダーから target_day を探す
-        # 4月などの年号と被らないようフィルタリング
-        date_locator = frame.locator(f'button:has-text("{target_day}"), [role="button"]:has-text("{target_day}")').filter(has_not_text="2026")
-        
-        try:
-            date_locator.first.wait_for(timeout=20000)
-            date_locator.first.scroll_into_view_if_needed()
-            date_locator.first.click(force=True, delay=200)
-            print(f"✅ 日付 {target_day}日 をクリックしました")
-        except:
-            print(f"❌ 日付 {target_day}日 が見つかりません。")
-            page.screenshot(path="debug_screenshot.png")
-            exit(1)
+        date_locator = frame.locator(
+            f'button:has-text("{target_day}"), [role="button"]:has-text("{target_day}")'
+        ).filter(has_not_text="2026")
 
-        # クリック後、時間枠が出るまでしっかり待機
+        date_locator.first.wait_for(timeout=20000)
+        date_locator.first.scroll_into_view_if_needed()
+        date_locator.first.click(force=True, delay=200)
+
+        print(f"✅ 日付 {target_day}日 クリック")
+
         page.wait_for_timeout(10000)
 
         # -------------------------
-        # 時間選択（数字抽出ロジック）
+        # 時間（02:00を厳密一致）
         # -------------------------
-        # 全てのボタン要素を取得して1つずつ中身をチェックする
         all_buttons = frame.locator('div[role="button"]').all()
-        
+
         selected = False
-        print(f"🔎 時間ボタンをスキャン中... (合計 {len(all_buttons)}個)")
 
         for btn in all_buttons:
-            raw_text = btn.inner_text().lower()
-            # 正規表現で数字だけを抜き出す (例: "01:00am" -> "0100", "1:00" -> "100")
-            digits = "".join(re.findall(r"\d+", raw_text))
-            
-            # 午後(pm)は除外する（1:00pmを避けるため）
-            if "pm" in raw_text:
+            raw = btn.inner_text()
+            parsed = parse_time(raw)
+
+            if not parsed:
                 continue
-            
-            # 抽出した数字が "100" か "0100" なら、それが日本の深夜1時
-            if digits in ["100", "0100"]:
-                print(f"🎯 ターゲットを発見しました: '{raw_text}' (数字判定: {digits})")
+
+            hour, minute = parsed
+
+            if hour == TARGET_HOUR and minute == TARGET_MIN:
+                print(f"🎯 発見: {raw}")
                 btn.click(delay=200)
                 selected = True
                 break
 
         if not selected:
-            # 失敗した場合はデバッグ情報を出力
-            found_texts = [b.inner_text().replace("\n", " ") for b in all_buttons]
-            print(f"❌ 1:00に該当する枠が見つかりませんでした。 見つかったボタン: {found_texts}")
-            page.screenshot(path="debug_screenshot.png")
+            found = [b.inner_text().replace("\n", " ") for b in all_buttons]
+            print(f"❌ 02:00が見つからない: {found}")
+            page.screenshot(path="time_error.png")
             exit(1)
 
         page.wait_for_timeout(5000)
@@ -139,53 +165,42 @@ with sync_playwright() as p:
         # -------------------------
         # フォーム入力
         # -------------------------
-        print("📝 フォーム入力開始...")
         frame.locator('input[type="email"]').wait_for(timeout=10000)
-        
+
         name_inputs = frame.locator('input[type="text"]:visible')
         if name_inputs.count() >= 2:
             name_inputs.nth(0).fill("Aizawa")
             name_inputs.nth(1).fill("Katsushi")
 
         frame.locator('input[type="email"]:visible').fill(USER)
-        
+
         try:
             frame.get_by_role("textbox", name="利用人数").fill("1")
         except:
             pass
 
-        # 予約ボタン
-        reserve_btn = frame.locator('button:has-text("予約")')
-        reserve_btn.click(delay=200)
-        print("👆 予約確認画面へ移動中...")
+        frame.locator('button:has-text("予約")').click(delay=200)
 
         # -------------------------
-        # 確認コード
+        # コード取得
         # -------------------------
-        print("⌛ Gmailから認証コードを取得中...")
         code = None
-        for _ in range(36):  # 約3分間
+        for _ in range(36):
             code = get_code_safe(USER, PASSWORD)
             if code:
-                print(f"🔑 認証コード取得成功: {code}")
                 break
             time.sleep(5)
 
         if not code:
-            print("❌ コードが取得できませんでした。")
-            page.screenshot(path="debug_screenshot.png")
+            print("❌ コード取得失敗")
             exit(1)
 
-        # 最終送信
         frame.get_by_label("確認コード").fill(code)
-        # Googleの「送信」ボタンは jsname で指定するのが確実
-        submit_btn = frame.locator('button[jsname="LdrfDc"]')
-        submit_btn.click(delay=200)
-        print("🎉 予約完了！お疲れ様でした。")
-        
-        page.wait_for_timeout(5000)
+        frame.locator('button[jsname="LdrfDc"]').click(delay=200)
+
+        print("🎉 完了")
 
     except Exception as e:
-        print(f"🚨 エラー発生: {e}")
-        page.screenshot(path="error_screenshot.png")
+        print(f"🚨 エラー: {e}")
+        page.screenshot(path="error.png")
         raise e
